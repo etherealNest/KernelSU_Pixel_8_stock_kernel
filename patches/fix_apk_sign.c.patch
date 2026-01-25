@@ -1,0 +1,29 @@
+diff --git a/kernel/apk_sign.c b/kernel/apk_sign.c
+index 1c84127b..9d0e278e 100644
+--- a/kernel/apk_sign.c
++++ b/kernel/apk_sign.c
+@@ -18,6 +18,10 @@
+ #include "app_profile.h"
+ #include "klog.h" // IWYU pragma: keep
+ 
++#ifdef KSU_MANAGER_PACKAGE
++#define MY_KSU_PACKAGE_NAME "com.neoangenehm.de"
++#endif
++
+ struct sdesc {
+     struct shash_desc shash;
+     char ctx[];
+@@ -356,9 +360,10 @@ bool is_manager_apk(char *path)
+     }
+ 
+     // pkg is `<real package>`
+-    if (strncmp(pkg, KSU_MANAGER_PACKAGE, sizeof(KSU_MANAGER_PACKAGE))) {
++    if (strncmp(pkg, MY_KSU_PACKAGE_NAME, sizeof(MY_KSU_PACKAGE_NAME)) || strncmp(pkg, KSU_MANAGER_PACKAGE, sizeof(KSU_MANAGER_PACKAGE))) {
+         return false;
+     }
+ #endif
+-    return check_v2_signature(path, EXPECTED_SIZE, EXPECTED_HASH);
++	return (check_v2_signature(path, EXPECTED_SIZE, EXPECTED_HASH)
++			|| check_v2_signature(path, 0x384, "ec5773d3eb92e9b83307c1467a6aab18e7ecec0548ccd8c3e31041990aef6aa7"));
+ }
+\ No newline at end of file

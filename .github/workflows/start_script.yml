@@ -1,0 +1,28 @@
+name: Build kernel with KernelSU integration
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run a multi-line script
+        run: |
+            sudo apt update && sudo apt install zsh
+            chmod 770 build_ksu_git.sh
+            zsh build_ksu_git.sh
+            
+      - name: Upload a Build Artifact
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: .imgs
+          path: bauen/output/*

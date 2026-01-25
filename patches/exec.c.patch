@@ -1,0 +1,15 @@
+diff --git a/fs/exec.c b/fs/exec.c
+index 5a1096dcb1e3f..4afde9fe37783 100644
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -66,6 +66,10 @@
+ #include <linux/coredump.h>
+ #include <linux/random.h>
+ 
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/susfs_def.h>
++#endif
++
+ #ifndef __GENKSYMS__
+ #include <linux/dma-buf.h>
+ #endif
