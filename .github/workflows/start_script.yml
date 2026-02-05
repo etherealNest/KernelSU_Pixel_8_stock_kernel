@@ -1,28 +1,43 @@
-name: Build kernel with KernelSU integration
+name: Build kernel with KernelSU/KernelSU-Next integration
 
 on:
   push:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
-
   workflow_dispatch:
 
 jobs:
   build:
+    name: Build ${{ matrix.variant }}
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: "KernelSU"
+            script: "build_ksu_git.sh"
+            artifact_name: "ksu_imgs"
+          - variant: "KernelSU-Next"
+            script: "build_ksu-next_git.sh"
+            artifact_name: "ksu-next_imgs"
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run a multi-line script
+      - name: Install dependencies
         run: |
-            sudo apt update && sudo apt install zsh
-            chmod 770 build_ksu_git.sh
-            zsh build_ksu_git.sh
-            
-      - name: Upload a Build Artifact
+          sudo apt update && sudo apt install -y zsh
+
+      - name: Build ${{ matrix.variant }}
+        run: |
+          chmod 770 ${{ matrix.script }}
+          zsh ${{ matrix.script }}
+
+      - name: Upload Build Artifact
         uses: actions/upload-artifact@v6.0.0
         with:
-          name: .imgs
+          name: ${{ matrix.artifact_name }}
           path: bauen/output/*

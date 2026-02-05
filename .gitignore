@@ -1,5 +1,7 @@
 kernel_pixel
 kernel_source
 output
-build.sh
 build_ksu.sh
+build_ksu-next.sh
+KPatch-Next
+patches/fix_apk_sign.c.patch

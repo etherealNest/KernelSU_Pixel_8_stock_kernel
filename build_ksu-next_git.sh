@@ -18,7 +18,7 @@ export DIST=$KERNEL/out/shusky/dist
 cd bauen
 
 # Монтирование исходного кода в aosp
-sudo mount --bind kernel_source ${KERNEL}/aosp
+sudo mount --bind kernel_source ${KERNEL}/aosp 
 
 echo "    ✨ Шаг 2: Применение патчей"
 # Удаление проверки ABI и метки dirty в наименовании ядра
@@ -29,13 +29,13 @@ rm -rf $KERNEL/aosp/android/abi_gki_protected_exports_*
 perl -pi -e 's/^\s*"protected_exports_list"\s*:\s*"android\/abi_gki_protected_exports_aarch64",\s*$//;' $KERNEL/aosp/BUILD.bazel
 sed -i "s/echo -n -dirty/echo -n \"\"/g" $KERNEL/build/kernel/kleaf/workspace_status_stamp.py
 
-echo "       🧩 Интеграция KernlSU в ядро"
-(cd $KERNEL/aosp && curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main)
-KSU_COMMIT=92aff05fba3b0f2d031fdaac83cd9aecdfeac7f6
+echo "       🧩 Интеграция KernlSU Next в ядро"
+(cd $KERNEL/aosp && curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/dev/kernel/setup.sh" | bash -s dev)
+KSU_COMMIT=314fbc5a2cf4edfee68bcaefce55f465ae6795ec
 SUSFS_COMMIT=700af50a692ec8a7279bce005ffce0f91195eab1
 
-echo "           🛠️ Смена коммита KernelSU на $KSU_COMMIT"
-(cd $KERNEL/aosp/KernelSU && git checkout $KSU_COMMIT)
+echo "      Смена коммита KernelSU-Next на $KSU_COMMIT"
+(cd $KERNEL/aosp/KernelSU-Next && git checkout $KSU_COMMIT)
 echo "           🛠️ Смена коммита SUSFS на $SUSFS_COMMIT"
 (cd ../susfs4ksu && git checkout $SUSFS_COMMIT)
 
@@ -48,7 +48,9 @@ echo "              🔧 Починка base.c"
 patch -d "$KERNEL/aosp" -p1 < ../patches/base.c.patch
 
 echo "           🛠️ Применение патча к самому KernelSU"
-patch -d "$KERNEL/aosp/KernelSU" -p1 < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
+patch -d "$KERNEL/aosp/KernelSU-Next" -p1 < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true
+echo "              🔧 Починка патча 10_enable_susfs_for_ksu.patch"
+patch -d "$KERNEL/aosp/KernelSU-Next" -p1 < ../patches/ksu-next_susfs/global.patch
 
 echo "       🧩 Интеграция GrapheneOS репозитория c исходным кодом ядра"
 patch -d "$KERNEL/aosp" -p2 < ../patches/fix_tcpm.c.patch
@@ -81,6 +83,8 @@ CONFIG_KSU_SUSFS=y
 CONFIG_THREAD_INFO_IN_TASK=y
 CONFIG_KALLSYMS=y
 CONFIG_KALLSYMS_ALL=y
+CONFIG_TMPFS_XATTR=y
+CONFIG_TMPFS_POSIX_ACL=y
 EOF
 
 # Начало сборки
@@ -95,3 +99,16 @@ ${DIST}/dtbo.img \
 ${DIST}/system_dlkm.img \
 ${DIST}/vendor_dlkm.img \
 ./output
+
+mkdir -p KPatch-Next && cd KPatch-Next
+gh release download --repo KernelSU-Next/KPatch-Next -p 'kpimg-linux' -p 'kptools-linux' --clobber
+gh release download --repo topjohnwu/Magisk -p 'Magisk*.apk' --clobber
+unzip -j Magisk*.apk lib/x86_64/libmagiskboot.so && mv libmagiskboot.so magiskboot
+chmod +x kptools-linux && chmod +x magiskboot
+export PATH="$(pwd):$PATH" && KPATCH=$(pwd) && cd -
+
+mkdir -p output/tmp && cd output/tmp
+magiskboot unpack ../boot.img 
+kptools-linux -p -i ${DIST}/Image -k ${KPATCH}/kpimg-linux -o ./kernel
+magiskboot repack ../boot.img ../boot_patched.img
+rm -rf ../boot.img && mv ../boot_patched.img ../boot.img && rm -rf ../tmp

@@ -1,0 +1,329 @@
+diff --git a/kernel/Makefile b/kernel/Makefile
+index 5db16b0..4bb3163 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -21,4 +21,13 @@ format:
+ check-format:
+ 	find . \( -name "*.c" -o -name "*.h" \) -print0 | xargs -0 clang-format --dry-run --Werror
+ 
++## For susfs stuff ##
++ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
++$(eval SUSFS_VERSION=$(shell cat $(srctree)/include/linux/susfs.h | grep -E '^#define SUSFS_VERSION' | cut -d' ' -f3 | sed 's/"//g'))
++$(info )
++$(info -- SUSFS_VERSION: $(SUSFS_VERSION))
++else
++$(info -- You have not integrated susfs in your kernel yet.)
++$(info -- Read: https://gitlab.com/simonpunk/susfs4ksu)
++endif
+ # Keep a new line here!! Because someone may append config
+\ No newline at end of file
+diff --git a/kernel/allowlist.c b/kernel/allowlist.c
+index 7480e1d..ae066d7 100644
+--- a/kernel/allowlist.c
++++ b/kernel/allowlist.c
+@@ -260,8 +260,10 @@ out:
+ 
+ 	if (persist) {
+ 		persistent_allow_list();
++#ifndef CONFIG_KSU_SUSFS
+ 		// FIXME: use a new flag
+ 		ksu_mark_running_process();
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 	}
+ 
+ 	return result;
+diff --git a/kernel/kernel_umount.c b/kernel/kernel_umount.c
+index d914ebd..6bfc733 100644
+--- a/kernel/kernel_umount.c
++++ b/kernel/kernel_umount.c
+@@ -132,6 +132,8 @@ int ksu_handle_umount(uid_t old_uid, uid_t new_uid)
+ 		pr_info("handle umount ignore non zygote child: %d\n", current->pid);
+ 		return 0;
+ 	}
++#endif // #ifndef CONFIG_KSU_SUSFS
++
+ 	// umount the target mnt
+ 	pr_info("handle umount for uid: %d, pid: %d\n", new_uid, current->pid);
+ 
+diff --git a/kernel/ksu.c b/kernel/ksu.c
+index c1aa6f2..0bbf992 100644
+--- a/kernel/ksu.c
++++ b/kernel/ksu.c
+@@ -45,13 +45,24 @@ int __init kernelsu_init(void)
+ 
+ 	ksu_supercalls_init();
+ 
++#ifndef CONFIG_KSU_SUSFS
+ 	ksu_syscall_hook_manager_init();
++#else
++    ksu_setuid_hook_init();
++    ksu_sucompat_init();
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 
+ 	ksu_allowlist_init();
+ 
+ 	ksu_throne_tracker_init();
+ 
++#ifdef CONFIG_KSU_SUSFS
++    susfs_init();
++#endif // #ifdef CONFIG_KSU_SUSFS
++
++#ifndef CONFIG_KSU_SUSFS
+ 	ksu_ksud_init();
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 
+     ksu_file_wrapper_init();
+ 
+@@ -72,9 +83,11 @@ void kernelsu_exit(void)
+ 
+ 	ksu_observer_exit();
+ 
++#ifndef CONFIG_KSU_SUSFS
+ 	ksu_ksud_exit();
+ 
+ 	ksu_syscall_hook_manager_exit();
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 
+ 	ksu_supercalls_exit();
+ 
+diff --git a/kernel/ksud.c b/kernel/ksud.c
+index 253f361..272f6f3 100644
+--- a/kernel/ksud.c
++++ b/kernel/ksud.c
+@@ -285,6 +285,12 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
+ 		}
+ 	}
+ 
++#ifdef CONFIG_KSU_SUSFS
++    // - We need to run ksu_handle_execveat_init() at the very end in case the above checks are skipped
++    (void)ksu_handle_execveat_init(filename);
++#endif // #ifdef CONFIG_KSU_SUSFS
++
++
+ 	return 0;
+ }
+ 
+@@ -454,6 +460,12 @@ static bool is_volumedown_enough(unsigned int count)
+ int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code,
+ 					int *value)
+ {
++#ifdef CONFIG_KSU_SUSFS
++    if (!ksu_input_hook) {
++        return 0;
++    }
++#endif // #ifdef CONFIG_KSU_SUSFS
++
+ 	if (*type == EV_KEY && *code == KEY_VOLUMEDOWN) {
+ 		int val = *value;
+ 		pr_info("KEY_VOLUMEDOWN val: %d\n", val);
+@@ -626,17 +638,45 @@ static void do_stop_input_hook(struct work_struct *work)
+ {
+ 	unregister_kprobe(&input_event_kp);
+ }
++#endif // #ifndef CONFIG_KSU_SUSFS
++
++#ifdef CONFIG_KSU_SUSFS
++void ksu_handle_vfs_fstat(int fd, loff_t *kstat_size_ptr) {
++    loff_t new_size = *kstat_size_ptr + ksu_rc_len;
++    struct file *file = fget(fd);
++
++    if (!file)
++        return;
++
++    if (is_init_rc(file)) {
++        pr_info("stat init.rc");
++        pr_info("adding ksu_rc_len: %lld -> %lld", *kstat_size_ptr, new_size);
++        *kstat_size_ptr = new_size;
++    }
++    fput(file);
++}
++#endif // #ifdef CONFIG_KSU_SUSFS
+ 
+ static void stop_init_rc_hook()
+ {
++#ifndef CONFIG_KSU_SUSFS
+ 	bool ret = schedule_work(&stop_init_rc_hook_work);
+ 	pr_info("unregister init_rc_hook kprobe: %d!\n", ret);
++#else
++    ksu_init_rc_hook = false;
++    pr_info("stop init_rc_hook\n");
++#endif // #ifndef CONFIG_KSU_SUSFS
+ }
+ 
+ static void stop_execve_hook()
+ {
++#ifndef CONFIG_KSU_SUSFS
+ 	bool ret = schedule_work(&stop_execve_hook_work);
+ 	pr_info("unregister execve kprobe: %d!\n", ret);
++#else
++    ksu_execveat_hook = false;
++    pr_info("stop execve_hook\n");
++#endif // #ifndef CONFIG_KSU_SUSFS
+ }
+ 
+ static void stop_input_hook()
+@@ -646,13 +686,19 @@ static void stop_input_hook()
+ 		return;
+ 	}
+ 	input_hook_stopped = true;
++#ifndef CONFIG_KSU_SUSFS
+ 	bool ret = schedule_work(&stop_input_hook_work);
+ 	pr_info("unregister input kprobe: %d!\n", ret);
++#else
++    ksu_input_hook = false;
++    pr_info("stop input_hook\n");
++#endif // #ifndef CONFIG_KSU_SUSFS
+ }
+ 
+ // ksud: module support
+ void ksu_ksud_init()
+ {
++#ifndef CONFIG_KSU_SUSFS
+ 	int ret;
+ 
+ 	ret = register_kprobe(&execve_kp);
+@@ -670,12 +716,15 @@ void ksu_ksud_init()
+ 	INIT_WORK(&stop_init_rc_hook_work, do_stop_init_rc_hook);
+ 	INIT_WORK(&stop_execve_hook_work, do_stop_execve_hook);
+ 	INIT_WORK(&stop_input_hook_work, do_stop_input_hook);
++#endif // #ifndef CONFIG_KSU_SUSFS
+ }
+ 
+ void ksu_ksud_exit()
+ {
++#ifndef CONFIG_KSU_SUSFS
+ 	unregister_kprobe(&execve_kp);
+ 	// this should be done before unregister sys_read_kp
+ 	// unregister_kprobe(&sys_read_kp);
+ 	unregister_kprobe(&input_event_kp);
++#endif // #ifndef CONFIG_KSU_SUSFS
+ }
+diff --git a/kernel/sucompat.c b/kernel/sucompat.c
+index 7b6de59..97493b1 100644
+--- a/kernel/sucompat.c
++++ b/kernel/sucompat.c
+@@ -77,6 +77,7 @@ static char __user *ksud_user_path(void)
+ 	return userspace_stack_buffer(ksud_path, sizeof(ksud_path));
+ }
+ 
++#ifndef CONFIG_KSU_SUSFS
+ int ksu_handle_faccessat(int *dfd, const char __user **filename_user,
+ 		int *mode, int *__unused_flags)
+ {
+diff --git a/kernel/supercalls.c b/kernel/supercalls.c
+index cab9179..31e3326 100644
+--- a/kernel/supercalls.c
++++ b/kernel/supercalls.c
+@@ -13,6 +13,11 @@
+ #include <linux/version.h>
+ #include <linux/utsname.h> // utsname() and uts_sem
+ 
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/namei.h>
++#include <linux/susfs.h>
++#endif // #ifdef CONFIG_KSU_SUSFS
++
+ #include "supercalls.h"
+ #include "arch.h"
+ #include "allowlist.h"
+@@ -120,6 +125,9 @@ static int do_report_event(void __user *arg)
+ 			boot_complete_lock = true;
+ 			pr_info("boot_complete triggered\n");
+ 			on_boot_completed();
++#ifdef CONFIG_KSU_SUSFS
++            susfs_start_sdcard_monitor_fn();
++#endif // #ifdef CONFIG_KSU_SUSFS
+ 		}
+ 		break;
+ 	}
+@@ -371,6 +379,7 @@ static int do_manage_mark(void __user *arg)
+ 
+ 	switch (cmd.operation) {
+ 	case KSU_MARK_GET: {
++#ifndef CONFIG_KSU_SUSFS
+ 		// Get task mark status
+ 		ret = ksu_get_task_mark(cmd.pid);
+ 		if (ret < 0) {
+@@ -379,8 +388,19 @@ static int do_manage_mark(void __user *arg)
+ 		}
+ 		cmd.result = (u32)ret;
+ 		break;
++#else
++        if (susfs_is_current_proc_umounted()) {
++            ret = 0; // SYSCALL_TRACEPOINT is NOT flagged
++        } else {
++            ret = 1; // SYSCALL_TRACEPOINT is flagged
++        }
++        pr_info("manage_mark: ret for pid %d: %d\n", cmd.pid, ret);
++        cmd.result = (u32)ret;
++        break;
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 	}
+ 	case KSU_MARK_MARK: {
++#ifndef CONFIG_KSU_SUSFS
+ 		if (cmd.pid == 0) {
+ 			ksu_mark_all_process();
+ 		} else {
+@@ -391,9 +411,15 @@ static int do_manage_mark(void __user *arg)
+ 				return ret;
+ 			}
+ 		}
++#else
++        if (cmd.pid != 0) {
++            return ret;
++        }
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 		break;
+ 	}
+ 	case KSU_MARK_UNMARK: {
++#ifndef CONFIG_KSU_SUSFS
+ 		if (cmd.pid == 0) {
+ 			ksu_unmark_all_process();
+ 		} else {
+@@ -404,11 +430,20 @@ static int do_manage_mark(void __user *arg)
+ 				return ret;
+ 			}
+ 		}
++#else
++        if (cmd.pid != 0) {
++            return ret;
++        }
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 		break;
+ 	}
+ 	case KSU_MARK_REFRESH: {
++#ifndef CONFIG_KSU_SUSFS
+ 		ksu_mark_running_process();
+ 		pr_info("manage_mark: refreshed running processes\n");
++#else
++        pr_info("susfs: cmd: KSU_MARK_REFRESH: do nothing\n");
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 		break;
+ 	}
+ 	default: {
+@@ -1025,19 +1060,25 @@ void ksu_supercalls_init(void)
+                 ksu_ioctl_handlers[i].cmd);
+     }
+ 
++#ifndef CONFIG_KSU_SUSFS
+ 	int rc = register_kprobe(&reboot_kp);
+ 	if (rc) {
+ 		pr_err("reboot kprobe failed: %d\n", rc);
+ 	} else {
+ 		pr_info("reboot kprobe registered successfully\n");
+ 	}
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 
+     sulog_init_heap(); // grab heap memory
+ }
+ 
+ void ksu_supercalls_exit(void)
+ {
++#ifndef CONFIG_KSU_SUSFS
+     unregister_kprobe(&reboot_kp);
++#else
++    pr_info("susfs: do nothing\n");
++#endif // #ifndef CONFIG_KSU_SUSFS
+ }
+ 
+ // IOCTL dispatcher
