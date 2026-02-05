@@ -3,3 +3,5 @@ kernel_source
 output
 build.sh
 build_ksu.sh
+build_ksu_next.sh
+KPatch-Next

@@ -31,7 +31,7 @@ sed -i "s/echo -n -dirty/echo -n \"\"/g" $KERNEL/build/kernel/kleaf/workspace_st
 
 echo "       🧩 Интеграция KernlSU Next в ядро"
 (cd $KERNEL/aosp && curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main)
-KSU_COMMIT=d0351b01f8ee2889251f6ff81a8e77f06cf04dfb
+KSU_COMMIT=92aff05fba3b0f2d031fdaac83cd9aecdfeac7f6
 echo "           🛠️ Смена коммита KernelSU на $KSU_COMMIT"
 (cd $KERNEL/aosp/KernelSU && git checkout $KSU_COMMIT && sleep 7)
 
