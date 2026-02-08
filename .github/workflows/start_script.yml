@@ -23,6 +23,9 @@ jobs:
           - variant: "KernelSU-Next"
             script: "build_ksu-next_git.sh"
             artifact_name: "ksu-next_imgs"
+    permissions:
+      actions: read
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
