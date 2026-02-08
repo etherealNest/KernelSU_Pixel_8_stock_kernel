@@ -86,29 +86,3 @@ CONFIG_KALLSYMS_ALL=y
 CONFIG_TMPFS_XATTR=y
 CONFIG_TMPFS_POSIX_ACL=y
 EOF
-
-# Начало сборки
-echo "    ✨ Шаг 3: Сборка"
-(cd $KERNEL && tools/bazel clean --expunge && KLEAF_REPO_MANIFEST=aosp_manifest.xml ./build_shusky.sh --config=fast --lto=thin --keep_going)
-
-echo "        🎁 Копирование артефактов сборки в папку"
-mkdir output
-cp ${DIST}/boot.img \
-${DIST}/vendor_kernel_boot.img \
-${DIST}/dtbo.img \
-${DIST}/system_dlkm.img \
-${DIST}/vendor_dlkm.img \
-./output
-
-mkdir -p KPatch-Next && cd KPatch-Next
-gh release download --repo KernelSU-Next/KPatch-Next -p 'kpimg-linux' -p 'kptools-linux' --clobber
-gh release download --repo topjohnwu/Magisk -p 'Magisk*.apk' --clobber
-unzip -j Magisk*.apk lib/x86_64/libmagiskboot.so && mv libmagiskboot.so magiskboot
-chmod +x kptools-linux && chmod +x magiskboot
-export PATH="$(pwd):$PATH" && KPATCH=$(pwd) && cd -
-
-mkdir -p output/tmp && cd output/tmp
-magiskboot unpack ../boot.img 
-kptools-linux -p -i ${DIST}/Image -k ${KPATCH}/kpimg-linux -o ./kernel
-magiskboot repack ../boot.img ../boot_patched.img
-rm -rf ../boot.img && mv ../boot_patched.img ../boot.img && rm -rf ../tmp
