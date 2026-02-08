@@ -1,0 +1,193 @@
+name: Build logic
+
+on:
+  workflow_call:
+    inputs:
+      variant:
+        required: true
+        type: string
+      beta:
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: ${{ inputs.beta }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_ID: ''
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Подготовка
+        run: |
+          KERNEL=$(pwd)/kernel_pixel
+          DEFCONFIG=$KERNEL/private/devices/google/shusky/shusky_defconfig
+          echo "KERNEL=$KERNEL" >> $GITHUB_ENV
+          echo "DEFCONFIG=$DEFCONFIG" >> $GITHUB_ENV
+          echo "DIST=$KERNEL/out/shusky/dist" >> $GITHUB_ENV
+
+          echo "KSU_NEXT_COMMIT=314fbc5a2cf4edfee68bcaefce55f465ae6795ec" >> $GITHUB_ENV
+          echo "KSU_COMMIT=fd629a22cc24db129a1c3972c7c9ff625aee77f5" >> $GITHUB_ENV
+          echo "SUSFS_COMMIT=700af50a692ec8a7279bce005ffce0f91195eab1" >> $GITHUB_ENV
+
+          if [ "${{ inputs.beta }}" == "stable" ]; then
+            PROP=google/shiba/shiba:16/BP4A.260205.001/14624666:user/release-keys
+          elif [ "${{ inputs.beta }}" == "beta" ]; then
+            PROP=google/shiba_beta/shiba:16/CP11.251209.007.A1/14691868:user/release-keys
+          fi
+          echo "PROP=$PROP" >> $GITHUB_ENV
+          echo "BUILD_ID=$(echo $PROP | cut -d'/' -f4)" >> $GITHUB_ENV
+
+          git clone https://gitlab.com/grapheneos/kernel_pixel.git -b 16-qpr2 --depth=1 kernel_pixel
+          git clone https://android.googlesource.com/kernel/common -b android14-6.1-2025-08 --depth=1 kernel_source
+          git clone https://gitlab.com/simonpunk/susfs4ksu -b gki-android14-6.1 && cd susfs4ksu && git checkout $SUSFS_COMMIT && cd -
+
+          sudo mount --bind kernel_source ${KERNEL}/aosp
+
+          cat >> $DEFCONFIG << EOF
+          CONFIG_KSU=y
+          CONFIG_KSU_SUSFS=y
+          CONFIG_THREAD_INFO_IN_TASK=y
+          CONFIG_KALLSYMS=y
+          CONFIG_KALLSYMS_ALL=y
+          CONFIG_TMPFS_XATTR=y
+          CONFIG_TMPFS_POSIX_ACL=y
+          EOF
+
+          # Удаление ABI и метки -dirty
+          rm -rf $KERNEL/aosp/android/abi_gki_protected_exports_*
+          perl -pi -e 's/^\s*"protected_exports_list"\s*:\s*"android\/abi_gki_protected_exports_aarch64",\s*$//;' $KERNEL/aosp/BUILD.bazel
+          sed -i "s/echo -n -dirty/echo -n \"\"/g" $KERNEL/build/kernel/kleaf/workspace_status_stamp.py
+
+      - name: Интеграция KernelSU/KernelSU-Next
+        working-directory: kernel_pixel/aosp
+        run: |
+          if [ ${{ inputs.variant }} == "KernelSU-Next" ]; then
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/dev/kernel/setup.sh" | bash -s dev
+            cd KernelSU-Next && git checkout $KSU_NEXT_COMMIT
+          elif [ ${{ inputs.variant }} == "KernelSU" ]; then
+            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+            cd KernelSU && git checkout $KSU_COMMIT
+          fi
+      
+      - name: Интеграция SUSFS и патчей
+        run: |
+          cp susfs4ksu/kernel_patches/fs/* $KERNEL/aosp/fs/
+          cp susfs4ksu/kernel_patches/include/linux/* $KERNEL/aosp/include/linux/
+
+          echo "  ✍🏻 Патч ядра"
+          patch -d "$KERNEL/aosp" -p1 < susfs4ksu/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch || true
+          echo "    🛠️ Ремонт патча ядра"
+          patch -d "$KERNEL/aosp" -p1 < patches/base.c.patch
+
+          echo "  ✍🏻 Патч KernelSU/KernelSU-Next"
+          patch -d "$KERNEL/aosp/${{ inputs.variant }}" -p1 < susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true
+          if [ ${{ inputs.variant }} == "KernelSU-Next" ]; then
+            echo "    🛠️ Ремонт патча KernelSU/KernelSU-Next"
+            PATCH=$GITHUB_WORKSPACE/patches/ksu-next_susfs
+            (cd $KERNEL/aosp/KernelSU-Next && sha256sum -c $PATCH/checksum.sha256)
+            patch -d "$KERNEL/aosp/KernelSU-Next" -p1 < $PATCH/allowlist.c.patch 
+            patch -d "$KERNEL/aosp/KernelSU-Next" -p1 < $PATCH/kernel_umount.c.patch 
+            patch -d "$KERNEL/aosp/KernelSU-Next" -p1 < $PATCH/ksu.c.patch 
+            patch -d "$KERNEL/aosp/KernelSU-Next" -p1 < $PATCH/ksud.c.patch 
+            patch -d "$KERNEL/aosp/KernelSU-Next" -p1 < $PATCH/Makefile.patch 
+            patch -d "$KERNEL/aosp/KernelSU-Next" -p1 < $PATCH/sucompat.c.patch 
+            patch -d "$KERNEL/aosp/KernelSU-Next" -p1 < $PATCH/supercalls.c.patch 
+          fi
+      - name: Интеграция GrapheneOS репозитория c исходным кодом ядра
+        run: |
+          patch -d $KERNEL -p1 < patches/fix_tcpm.c.patch
+          patch -d $KERNEL -p1 < patches/fix_tcpm.h.patch
+
+          sed -i '/tcpm_unregister_port/a \
+            tcpm_update_sink_capabilities' $KERNEL/aosp/android/abi_gki_aarch64_pixel
+          grep -A 1 'tcpm_unregister_port' $KERNEL/aosp/android/abi_gki_aarch64_pixel
+
+          sed -i '/#endif	\/\* _LINUX_MINMAX_H \*\//i \
+          #define MIN(a, b) __cmp(min, a, b)\
+          #define MAX(a, b) __cmp(max, a, b)' $KERNEL/aosp/include/linux/minmax.h
+          grep -B 2 '#endif	/\* _LINUX_MINMAX_H \*/' $KERNEL/aosp/include/linux/minmax.h
+
+          sed -i '/#define MAX(a, b) ((a) >= (b) ? (a) : (b))/i \
+          #ifdef MAX\
+          #undef MAX\
+          #endif' $KERNEL/aosp/mm/zsmalloc.c
+          grep -B 3 '#define MAX(a, b) ((a) >= (b) ? (a) : (b))' $KERNEL/aosp/mm/zsmalloc.c
+
+      - name: Интеграция Baseband-guard
+        run: |
+          (cd $KERNEL/aosp && wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash)
+          echo "CONFIG_BBG=y" >> $DEFCONFIG
+          sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' $KERNEL/aosp/security/Kconfig
+
+      - name: Сборка
+        run: cd $KERNEL && tools/bazel clean --expunge && KLEAF_REPO_MANIFEST=aosp_manifest.xml ./build_shusky.sh --config=fast --lto=thin --keep_going
+
+      - name: Копирование и подготовка артефактов
+        run: |
+          mkdir output_shiba && cp ${DIST}/boot.img \
+          ${DIST}/vendor_kernel_boot.img \
+          ${DIST}/dtbo.img \
+          ${DIST}/system_dlkm.img \
+          ${DIST}/vendor_dlkm.img \
+          ./output_shiba
+
+          if [ ${{ inputs.variant }} == "KernelSU-Next" ]; then
+            mkdir -p KPatch-Next && cd KPatch-Next
+            gh release download --repo KernelSU-Next/KPatch-Next -p 'kpimg-linux' -p 'kptools-linux' --clobber
+            gh release download --repo topjohnwu/Magisk -p 'Magisk*.apk' --clobber
+            unzip -j Magisk*.apk lib/x86_64/libmagiskboot.so && mv libmagiskboot.so magiskboot
+            chmod +x kptools-linux && chmod +x magiskboot
+            export PATH="$(pwd):$PATH" && KPATCH=$(pwd) && cd -
+            
+            mkdir -p output_shiba/tmp && cd output_shiba/tmp
+            magiskboot unpack ../boot.img 
+            kptools-linux -p -i ${DIST}/Image -k ${KPATCH}/kpimg-linux -o ./kernel
+            magiskboot repack ../boot.img ../boot_patched.img
+            rm -rf ../boot.img && mv ../boot_patched.img ../boot.img && rm -rf ../tmp && cd -
+          fi
+
+          mkdir output_husky && cp -r output_shiba/* output_husky
+
+          curl -s "https://android.googlesource.com/platform/external/avb/+/master/avbtool.py?format=TEXT" | base64 -d > avbtool.py && chmod +x avbtool.py
+
+          ./avbtool.py add_hash_footer \
+            --image output_shiba/vendor_kernel_boot.img \
+            --partition_name vendor_kernel_boot \
+            --partition_size 0x4000000 \
+            --hash_algorithm sha256 \
+            --prop com.android.build.vendor_kernel_boot.fingerprint:"$PROP"
+          ./avbtool.py add_hash_footer \
+            --image output_shiba/dtbo.img \
+            --partition_name dtbo \
+            --partition_size 0x1000000 \
+            --hash_algorithm sha256 \
+            --prop com.android.build.dtbo.fingerprint:"$PROP"
+
+          ./avbtool.py add_hash_footer \
+            --image output_husky/vendor_kernel_boot.img \
+            --partition_name vendor_kernel_boot \
+            --partition_size 0x4000000 \
+            --hash_algorithm sha256 \
+            --prop com.android.build.vendor_kernel_boot.fingerprint:"${PROP//shiba/husky}"
+          ./avbtool.py add_hash_footer \
+            --image output_husky/dtbo.img \
+            --partition_name dtbo \
+            --partition_size 0x1000000 \
+            --hash_algorithm sha256 \
+            --prop com.android.build.dtbo.fingerprint:"${PROP//shiba/husky}"
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: shiba(Pixel-8)_${{ inputs.variant }}_${{ inputs.beta }}_${{ env.BUILD_ID }}
+          path: output_shiba/*
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: husky(Pixel-8-Pro)_${{ inputs.variant }}_${{ inputs.beta }}_${{ env.BUILD_ID }}
+          path: output_husky/*

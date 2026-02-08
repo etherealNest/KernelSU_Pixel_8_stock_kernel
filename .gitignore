@@ -5,3 +5,5 @@ build_ksu.sh
 build_ksu-next.sh
 KPatch-Next
 patches/fix_apk_sign.c.patch
+build_ksu_git.sh
+build_ksu-next_git.sh
