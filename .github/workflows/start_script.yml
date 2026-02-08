@@ -35,6 +35,9 @@ jobs:
         run: |
           chmod 770 ${{ matrix.script }}
           zsh ${{ matrix.script }}
+          
+      - name: 🐛 Debug Build
+        uses: stateful/vscode-server-action@v1
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v6.0.0
