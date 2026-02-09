@@ -12,6 +12,11 @@ Make full backups of your data and keep them in a safe place. Also, backup parti
 
 ---
 
+### Features
+* KernelSU-Next with KPatch-Next / KernelSU
+* SUSFS
+* Baseband-guard
+
 ### Build Information
 
 Kernel version, KSU version, and other info can be found in the [releases](#).
@@ -31,5 +36,7 @@ Some critical drivers are integrated directly into the kernel rather than as ext
 
 *   **SUSFS:** [gitlab.com/simonpunk/susfs4ksu](https://gitlab.com/simonpunk/susfs4ksu)
 *   **KernelSU:** [github.com/tiann/KernelSU](https://github.com/tiann/KernelSU)
+*   **KPatch-Next:** https://github.com/KernelSU-Next/KPatch-Next
 *   **GrapheneOS:** [gitlab.com/grapheneos/kernel_pixel](https://gitlab.com/grapheneos/kernel_pixel)
 *   **WildKernels:** [github.com/WildKernels](https://github.com/WildKernels)
+*   **Baseband-guard:** https://github.com/vc-teahouse/Baseband-guard

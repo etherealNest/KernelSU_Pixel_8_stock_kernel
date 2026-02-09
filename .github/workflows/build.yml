@@ -17,6 +17,10 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       BUILD_ID: ''
+      KERNEL: ''
+      DEFCONFIG: ''
+      KSU_VERSION: ''
+      KERNEL_VER: '' 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -30,7 +34,7 @@ jobs:
           echo "DIST=$KERNEL/out/shusky/dist" >> $GITHUB_ENV
 
           echo "KSU_NEXT_COMMIT=314fbc5a2cf4edfee68bcaefce55f465ae6795ec" >> $GITHUB_ENV
-          echo "KSU_COMMIT=fd629a22cc24db129a1c3972c7c9ff625aee77f5" >> $GITHUB_ENV
+          echo "KSU_COMMIT=975d09a34f2267b2fb8be32b624a43cb4b978349" >> $GITHUB_ENV
           echo "SUSFS_COMMIT=700af50a692ec8a7279bce005ffce0f91195eab1" >> $GITHUB_ENV
 
           if [ "${{ inputs.beta }}" == "stable" ]; then
@@ -62,15 +66,19 @@ jobs:
           perl -pi -e 's/^\s*"protected_exports_list"\s*:\s*"android\/abi_gki_protected_exports_aarch64",\s*$//;' $KERNEL/aosp/BUILD.bazel
           sed -i "s/echo -n -dirty/echo -n \"\"/g" $KERNEL/build/kernel/kleaf/workspace_status_stamp.py
 
+          echo "KERNEL_VER=$(sed -n '2,4p' ${KERNEL}/aosp/Makefile | grep -oE '[0-9]+' | paste -sd '.')" >> $GITHUB_ENV
+
       - name: Интеграция KernelSU/KernelSU-Next
         working-directory: kernel_pixel/aosp
         run: |
           if [ ${{ inputs.variant }} == "KernelSU-Next" ]; then
             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/dev/kernel/setup.sh" | bash -s dev
             cd KernelSU-Next && git checkout $KSU_NEXT_COMMIT
+            BASE_VERSION=30000 && COMMIT_COUNT=$(/usr/bin/git rev-list --count origin/dev) && echo "KSU_VERSION=$(expr $COMMIT_COUNT "+" $BASE_VERSION)" >> $GITHUB_ENV
           elif [ ${{ inputs.variant }} == "KernelSU" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
             cd KernelSU && git checkout $KSU_COMMIT
+            BASE_VERSION=30000 && COMMIT_COUNT=$(/usr/bin/git rev-list --count origin/main) && echo "KSU_VERSION=$(expr $COMMIT_COUNT "+" $BASE_VERSION)" >> $GITHUB_ENV
           fi
       
       - name: Интеграция SUSFS и патчей
@@ -138,7 +146,7 @@ jobs:
           if [ ${{ inputs.variant }} == "KernelSU-Next" ]; then
             mkdir -p KPatch-Next && cd KPatch-Next
             gh release download --repo KernelSU-Next/KPatch-Next -p 'kpimg-linux' -p 'kptools-linux' --clobber
-            gh release download --repo topjohnwu/Magisk -p 'Magisk*.apk' --clobber
+            gh release download v30.2 --repo topjohnwu/Magisk -p 'Magisk*.apk' --clobber
             unzip -j Magisk*.apk lib/x86_64/libmagiskboot.so && mv libmagiskboot.so magiskboot
             chmod +x kptools-linux && chmod +x magiskboot
             export PATH="$(pwd):$PATH" && KPATCH=$(pwd) && cd -
@@ -147,7 +155,7 @@ jobs:
             magiskboot unpack ../boot.img 
             kptools-linux -p -i ${DIST}/Image -k ${KPATCH}/kpimg-linux -o ./kernel
             magiskboot repack ../boot.img ../boot_patched.img
-            rm -rf ../boot.img && mv ../boot_patched.img ../boot.img && rm -rf ../tmp && cd -
+            mv -f ../boot_patched.img ../boot.img && rm -rf ../tmp && cd -
           fi
 
           mkdir output_husky && cp -r output_shiba/* output_husky
@@ -180,14 +188,48 @@ jobs:
             --hash_algorithm sha256 \
             --prop com.android.build.dtbo.fingerprint:"${PROP//shiba/husky}"
 
+          cat >> output_shiba/README.txt << EOF
+          ##########Source##########
+          https://github.com/etherealNest/KernelSU_Pixel_8_stock_kernel
+          ###########Info###########
+          Device: Pixel 8
+          Codename: shiba
+          Linux kernel: ${{ env.KERNEL_VER }}
+          ${{ inputs.variant }} version: ${{ env.KSU_VERSION }}
+          SUSFS: v2.0.0
+          Build-in Baseband-guard
+          ####Kernel created for####
+          Security patch: $(date "+%b %Y")
+          Firmware Build ID: ${{ env.BUILD_ID }}
+          Type firmware: stock ${{ inputs.beta }}
+          ##########################
+          EOF
+
+          cat >> output_husky/README.txt << EOF
+          ##########Source##########
+          https://github.com/etherealNest/KernelSU_Pixel_8_stock_kernel
+          ###########Info###########
+          Device: Pixel 8 Pro
+          Codename: husky
+          Linux kernel: ${{ env.KERNEL_VER }}
+          ${{ inputs.variant }} version: ${{ env.KSU_VERSION }}
+          SUSFS version: v2.0.0
+          Build-in Baseband-guard
+          ####Kernel created for####
+          Security patch: $(date "+%b %Y")
+          Firmware Build ID: ${{ env.BUILD_ID }}
+          Type firmware: stock ${{ inputs.beta }}
+          ##########################
+          EOF
+
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v6.0.0
         with:
-          name: shiba(Pixel-8)_${{ inputs.variant }}_${{ inputs.beta }}_${{ env.BUILD_ID }}
+          name: ${{ env.KERNEL_VER }}_shiba(Pixel-8)_${{ inputs.variant }}_${{ inputs.beta }}_${{ env.BUILD_ID }}
           path: output_shiba/*
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v6.0.0
         with:
-          name: husky(Pixel-8-Pro)_${{ inputs.variant }}_${{ inputs.beta }}_${{ env.BUILD_ID }}
+          name: ${{ env.KERNEL_VER }}_husky(Pixel-8-Pro)_${{ inputs.variant }}_${{ inputs.beta }}_${{ env.BUILD_ID }}
           path: output_husky/*
