@@ -33,8 +33,8 @@ jobs:
           echo "DEFCONFIG=$DEFCONFIG" >> $GITHUB_ENV
           echo "DIST=$KERNEL/out/shusky/dist" >> $GITHUB_ENV
 
-          echo "KSU_NEXT_COMMIT=314fbc5a2cf4edfee68bcaefce55f465ae6795ec" >> $GITHUB_ENV
-          echo "KSU_COMMIT=975d09a34f2267b2fb8be32b624a43cb4b978349" >> $GITHUB_ENV
+          echo "KSU_NEXT_COMMIT=6aa18400f7277ed3d0d0f30ea97f1b437a235cd3" >> $GITHUB_ENV
+          echo "KSU_COMMIT=80d86b4835afb5208e1c282fb07f173ef8728ca2" >> $GITHUB_ENV
           echo "SUSFS_COMMIT=700af50a692ec8a7279bce005ffce0f91195eab1" >> $GITHUB_ENV
 
           if [ "${{ inputs.beta }}" == "stable" ]; then
@@ -199,11 +199,13 @@ jobs:
           SUSFS: v2.0.0
           Build-in Baseband-guard
           ####Kernel created for####
-          Security patch: $(date "+%b %Y")
           Firmware Build ID: ${{ env.BUILD_ID }}
           Type firmware: stock ${{ inputs.beta }}
           ##########################
           EOF
+          if [ "${{ inputs.beta }}" == "stable" ]; then
+              sed -i "/Firmware Build ID/i Security patch: $(date "+%b %Y")" output_shiba/README.txt
+          fi
 
           cat >> output_husky/README.txt << EOF
           ##########Source##########
@@ -215,12 +217,14 @@ jobs:
           ${{ inputs.variant }} version: ${{ env.KSU_VERSION }}
           SUSFS version: v2.0.0
           Build-in Baseband-guard
-          ####Kernel created for####
-          Security patch: $(date "+%b %Y")
+          ####Kernel created for####  
           Firmware Build ID: ${{ env.BUILD_ID }}
           Type firmware: stock ${{ inputs.beta }}
           ##########################
           EOF
+          if [ "${{ inputs.beta }}" == "stable" ]; then
+              sed -i "/Firmware Build ID/i Security patch: $(date "+%b %Y")" output_husky/README.txt
+          fi
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v6.0.0
