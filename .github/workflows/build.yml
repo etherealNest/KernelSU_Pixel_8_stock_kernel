@@ -34,13 +34,14 @@ jobs:
           echo "DIST=$KERNEL/out/shusky/dist" >> $GITHUB_ENV
 
           echo "KSU_NEXT_COMMIT=6aa18400f7277ed3d0d0f30ea97f1b437a235cd3" >> $GITHUB_ENV
-          echo "KSU_COMMIT=80d86b4835afb5208e1c282fb07f173ef8728ca2" >> $GITHUB_ENV
-          echo "SUSFS_COMMIT=700af50a692ec8a7279bce005ffce0f91195eab1" >> $GITHUB_ENV
+          echo "KSU_COMMIT=c44adc14c7fdaf9e7d3de8a32575bf15e1e35206" >> $GITHUB_ENV
+          SUSFS_COMMIT=700af50a692ec8a7279bce005ffce0f91195eab1
+          echo "SUSFS_COMMIT=$SUSFS_COMMIT" >> $GITHUB_ENV
 
           if [ "${{ inputs.beta }}" == "stable" ]; then
             PROP=google/shiba/shiba:16/BP4A.260205.001/14624666:user/release-keys
           elif [ "${{ inputs.beta }}" == "beta" ]; then
-            PROP=google/shiba_beta/shiba:16/CP11.251209.007.A1/14691868:user/release-keys
+            PROP=google/shiba_beta/shiba:16/CP11.251209.009.A1/14691868:user/release-keys
           fi
           echo "PROP=$PROP" >> $GITHUB_ENV
           echo "BUILD_ID=$(echo $PROP | cut -d'/' -f4)" >> $GITHUB_ENV

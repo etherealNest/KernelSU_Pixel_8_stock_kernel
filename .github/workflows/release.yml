@@ -1,0 +1,155 @@
+name: Create Release
+
+on:
+  workflow_run:
+    workflows: ["Build kernel with KernelSU/KernelSU-Next integration"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Build workflow run ID (leave empty for latest)'
+        required: false
+        type: string
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Determine run ID
+        id: run-id
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ -n "${{ inputs.run_id }}" ]; then
+              echo "value=${{ inputs.run_id }}" >> $GITHUB_OUTPUT
+            else
+              RUN_ID=$(gh run list --workflow=build-main.yml --status=success --limit=1 --json databaseId --jq '.[0].databaseId')
+              echo "value=${RUN_ID}" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "value=${{ github.event.workflow_run.id }}" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: ./assets
+          run-id: ${{ steps.run-id.outputs.value }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        
+      - name: Getting enivroments
+        run: |
+          README_BETA=$(find ./assets -path "*shiba*KernelSU-Next*beta*/README.txt")
+          README_STABLE=$(find ./assets -path "*shiba*KernelSU*stable*/README.txt")
+          
+          cat >> $GITHUB_ENV << EOF
+          DATE=$(sed -n 's/Security patch: //p' $README_STABLE)
+          KSU_NEXT_VERSION=$(sed -n 's/KernelSU-Next version: //p' $README_BETA)
+          KSU_VERSION=$(sed -n 's/KernelSU version: //p' $README_STABLE)
+          STABLE_BUILDID=$(sed -n 's/Firmware Build ID: //p' $README_STABLE)
+          BETA_BUILDID=$(sed -n 's/Firmware Build ID: //p' $README_BETA)
+          KERNEL_VER=$(sed -n 's/Linux kernel: //p' $README_STABLE)
+          EOF
+        
+      - name: Archive artifacts
+        run: |
+          for dir in ./assets/*/; do
+            dirname=$(basename "$dir")
+            (cd "$dir" && zip -r "../${dirname}.zip" .)
+          done
+        
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./assets/*.zip
+          tag_name: KSU${{ env.KSU_VERSION }}_KSU-Next${{ env.KSU_NEXT_VERSION }}_${{ env.STABLE_BUILDID }}_${{ env.BETA_BUILDID }}
+          prerelease: false
+          name: "${{ env.DATE }} | ${{ env.KERNEL_VER }} | KSU ${{ env.KSU_VERSION }} / KSU-Next ${{ env.KSU_NEXT_VERSION }}"
+          body: |
+            ### Info
+            **Device:** Google Pixel 8 (shiba) / 8 Pro (husky)
+            **Kernel Version:** ${{ env.KERNEL_VER }}
+            **Firmware build ID stable / beta**: ${{ env.STABLE_BUILDID }} / ${{ env.BETA_BUILDID }}
+
+            ### **KernelSU Next Version:** ${{ env.KSU_NEXT_VERSION }}
+            **Integrated [Baseband_guard](https://github.com/vc-teahouse/Baseband-guard)**
+            **Integrated [KPatch-Next](https://github.com/KernelSU-Next/KPatch-Next)**
+            **SUSFS Version:** v2.0.0
+
+            ### **KernelSU Version:** ${{ env.KSU_VERSION }}
+            **Integrated [Baseband_guard](https://github.com/vc-teahouse/Baseband-guard)**
+            **SUSFS Version:** v2.0.0
+
+            **GitHub Actions workflow run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ steps.run-id.outputs.value }}
+
+            ---
+            
+            ### ⚠️ Important
+            **Before performing any actions, read README.md on the main repository page.**
+            
+            ---
+            
+            ### Installation Guide
+            
+            > **Requirements:** Unlocked bootloader and up-to-date [Platform-tools](https://developer.android.com/tools/releases/platform-tools).
+            
+            **1. Pre-install step:**
+            Select the archive based on its filename, for example:
+              6.1.145_husky(Pixel-8-Pro)_KernelSU-Next_beta_CP11.251209.007.A1
+              6.1.145 = kernel version
+              husky(Pixel-8-Pro) = device codename and model name
+              KernelSU-Next = KSU variant
+              beta = indicates stock firmware type, beta or stable
+              CP11.251209.007.A1 = build ID that must match your firmware (can be found in "About phone" settings).
+            
+            **2. Flash main images (Bootloader mode):**
+            Reboot your phone into **bootloader** mode.
+            Flash the following images:
+            ```bash
+            fastboot flash boot boot.img
+            fastboot flash vendor_kernel_boot vendor_kernel_boot.img
+            fastboot flash dtbo dtbo.img
+            ```
+            
+            **3. Flash dlkm images (Fastbootd mode):**
+            Reboot into fastbootd mode:
+            
+            ```bash
+            fastboot reboot fastboot
+            ```
+            
+            Flash the vendor_dlkm and system_dlkm images:
+            
+            ```bash
+            fastboot flash vendor_dlkm vendor_dlkm.img
+            fastboot flash system_dlkm system_dlkm.img
+            ```
+            
+            **4. Finish:**
+            Reboot into the system:
+            
+            ```bash
+            fastboot reboot
+            ```
+            
+            **5. Post-installation steps (After booting):**
+            
+            ### For KernelSU Next:
+            
+            1. Download and install [KernelSU Next manager](https://github.com/KernelSU-Next/KernelSU-Next/releases)
+            2. Download and install the [SUSFS module](https://github.com/sidex15/susfs4ksu-module)
+            3. Download and install a meta-module, for example, [meta-hybrid_mount](https://github.com/Hybrid-Mount/meta-hybrid_mount)
+            4. Download and install the [KPatch-Next-Module](https://github.com/KernelSU-Next/KPatch-Next-Module/releases)
+            5. Reboot your system to apply changes
+            
+            ### For KernelSU:
+            
+            1. Download and install [KernelSU manager](https://github.com/tiann/KernelSU/releases)
+            2. Download and install the [SUSFS module](https://github.com/sidex15/susfs4ksu-module)
+            3. Download and install a meta-module, for example, [meta-hybrid_mount](https://github.com/Hybrid-Mount/meta-hybrid_mount)
+            4. Reboot your system to apply changes
