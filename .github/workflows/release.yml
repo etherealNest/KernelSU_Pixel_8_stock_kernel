@@ -45,7 +45,7 @@ jobs:
       - name: Getting enivroments
         run: |
           README_BETA=$(find ./assets -path "*shiba*KernelSU-Next*beta*/README.txt")
-          README_STABLE=$(find ./assets -path "*shiba*KernelSU*stable*/README.txt")
+          README_STABLE=$(find ./assets -path "*shiba*KernelSU_stable*/README.txt")
           
           cat >> $GITHUB_ENV << EOF
           DATE=$(sed -n 's/Security patch: //p' $README_STABLE)
