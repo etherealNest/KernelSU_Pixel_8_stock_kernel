@@ -41,7 +41,7 @@ jobs:
           if [ "${{ inputs.beta }}" == "stable" ]; then
             PROP=google/shiba/shiba:16/BP4A.260205.001/14624666:user/release-keys
           elif [ "${{ inputs.beta }}" == "beta" ]; then
-            PROP=google/shiba_beta/shiba:16/CP11.251209.009.A1/14691868:user/release-keys
+            PROP=google/shiba_beta/shiba:16/CP11.251209.009.A1/14840729:user/release-keys
           fi
           echo "PROP=$PROP" >> $GITHUB_ENV
           echo "BUILD_ID=$(echo $PROP | cut -d'/' -f4)" >> $GITHUB_ENV
