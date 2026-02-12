@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [KernelSU, KernelSU-Next]
+        variant: [KernelSU-Next]
         beta: [beta, stable]
     uses: ./.github/workflows/build.yml
     with: 

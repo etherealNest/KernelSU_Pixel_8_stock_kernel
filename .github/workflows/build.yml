@@ -39,16 +39,20 @@ jobs:
           echo "SUSFS_COMMIT=$SUSFS_COMMIT" >> $GITHUB_ENV
 
           if [ "${{ inputs.beta }}" == "stable" ]; then
+            SECURITY_PATCH=2026-01
             PROP=google/shiba/shiba:16/BP4A.260205.001/14624666:user/release-keys
           elif [ "${{ inputs.beta }}" == "beta" ]; then
+            SECURITY_PATCH=2026-01
             PROP=google/shiba_beta/shiba:16/CP11.251209.009.A1/14840729:user/release-keys
           fi
+          echo "SECURITY_PATCH=$SECURITY_PATCH" >> $GITHUB_ENV
           echo "PROP=$PROP" >> $GITHUB_ENV
           echo "BUILD_ID=$(echo $PROP | cut -d'/' -f4)" >> $GITHUB_ENV
 
           git clone https://gitlab.com/grapheneos/kernel_pixel.git -b 16-qpr2 --depth=1 kernel_pixel
           git clone https://android.googlesource.com/kernel/common -b android14-6.1-2025-08 --depth=1 kernel_source
           git clone https://gitlab.com/simonpunk/susfs4ksu -b gki-android14-6.1 && cd susfs4ksu && git checkout $SUSFS_COMMIT && cd -
+          git clone https://github.com/etherealNest/AnyKernel3 -b stock_zuma --depth=1
 
           sudo mount --bind kernel_source ${KERNEL}/aosp
 
@@ -75,11 +79,11 @@ jobs:
           if [ ${{ inputs.variant }} == "KernelSU-Next" ]; then
             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/dev/kernel/setup.sh" | bash -s dev
             cd KernelSU-Next && git checkout $KSU_NEXT_COMMIT
-            BASE_VERSION=30000 && COMMIT_COUNT=$(/usr/bin/git rev-list --count origin/dev) && echo "KSU_VERSION=$(expr $COMMIT_COUNT "+" $BASE_VERSION)" >> $GITHUB_ENV
+            BASE_VERSION=30000 && COMMIT_COUNT=$(/usr/bin/git rev-list --count HEAD) && echo "KSU_VERSION=$(expr $COMMIT_COUNT "+" $BASE_VERSION)" >> $GITHUB_ENV
           elif [ ${{ inputs.variant }} == "KernelSU" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
             cd KernelSU && git checkout $KSU_COMMIT
-            BASE_VERSION=30000 && COMMIT_COUNT=$(/usr/bin/git rev-list --count origin/main) && echo "KSU_VERSION=$(expr $COMMIT_COUNT "+" $BASE_VERSION)" >> $GITHUB_ENV
+            BASE_VERSION=30000 && COMMIT_COUNT=$(/usr/bin/git rev-list --count HEAD) && echo "KSU_VERSION=$(expr $COMMIT_COUNT "+" $BASE_VERSION)" >> $GITHUB_ENV
           fi
       
       - name: Интеграция SUSFS и патчей
@@ -135,6 +139,40 @@ jobs:
       - name: Сборка
         run: cd $KERNEL && tools/bazel clean --expunge && KLEAF_REPO_MANIFEST=aosp_manifest.xml ./build_shusky.sh --config=fast --lto=thin --keep_going
 
+      - name: Подготовка архивов AnyKernel3
+        run: |
+          ZIP_NAME=${{ env.KERNEL_VER }}_AnyKernel3_zuma_${{ inputs.variant }}_${{ inputs.beta }}.zip
+          mkdir -p anykernel/output && cp ${DIST}/vendor_kernel_boot.img anykernel/output
+          curl -s "https://android.googlesource.com/platform/system/tools/mkbootimg/+/refs/heads/main/unpack_bootimg.py?format=TEXT" | base64 -d > unpack_bootimg.py && chmod +x unpack_bootimg.py
+          mkdir tmp && ./unpack_bootimg.py --boot_img anykernel/output/vendor_kernel_boot.img --out tmp && cp tmp/dtb anykernel/output && rm -rf tmp/*
+          cp -r AnyKernel3/* anykernel/output
+          
+          mkdir -p KPatch-Next && cd KPatch-Next
+          gh release download --repo KernelSU-Next/KPatch-Next -p 'kpimg-linux' -p 'kptools-linux' --clobber && chmod +x kptools-linux
+          export PATH="$(pwd):$PATH" && KPATCH=$(pwd) && cd -
+          kptools-linux -p -i ${DIST}/Image -k ${KPATCH}/kpimg-linux -o ${DIST}/Image_patched && mv -f ${DIST}/Image_patched ${DIST}/Image
+          
+          cp ${DIST}/Image anykernel/output
+          rm -rf anykernel/output/*.img
+          sed -i 's/supported\.vendorpatchlevels=/&${{ env.SECURITY_PATCH}}/' anykernel/output/anykernel.sh
+          cd anykernel/output && zip -rm ${ZIP_NAME} * && cd -
+
+          cat >> anykernel/output/README.txt << EOF
+          ##########Source##########
+          https://github.com/etherealNest/KernelSU_Pixel_8_stock_kernel
+          ###########Info###########
+          Device: Pixel 8/Pro
+          Codename: shiba/husky
+          Linux kernel: ${{ env.KERNEL_VER }}
+          ${{ inputs.variant }} version: ${{ env.KSU_VERSION }}
+          SUSFS: v2.0.0
+          Build-in Baseband-guard
+          ####Kernel created for####
+          Security patch: ${{ env.SECURITY_PATCH }}
+          Type firmware: stock ${{ inputs.beta }}
+          ##########################
+          EOF
+
       - name: Копирование и подготовка артефактов
         run: |
           mkdir output_shiba && cp ${DIST}/boot.img \
@@ -144,17 +182,17 @@ jobs:
           ${DIST}/vendor_dlkm.img \
           ./output_shiba
 
-          if [ ${{ inputs.variant }} == "KernelSU-Next" ]; then
-            mkdir -p KPatch-Next && cd KPatch-Next
-            gh release download --repo KernelSU-Next/KPatch-Next -p 'kpimg-linux' -p 'kptools-linux' --clobber
+          if [ KernelSU-Next == "KernelSU-Next" ]; then
+            cd KPatch-Next
             gh release download v30.2 --repo topjohnwu/Magisk -p 'Magisk*.apk' --clobber
             unzip -j Magisk*.apk lib/x86_64/libmagiskboot.so && mv libmagiskboot.so magiskboot
             chmod +x kptools-linux && chmod +x magiskboot
-            export PATH="$(pwd):$PATH" && KPATCH=$(pwd) && cd -
+            export PATH="$(pwd):$PATH"
+            cd -
             
             mkdir -p output_shiba/tmp && cd output_shiba/tmp
-            magiskboot unpack ../boot.img 
-            kptools-linux -p -i ${DIST}/Image -k ${KPATCH}/kpimg-linux -o ./kernel
+            magiskboot unpack ../boot.img
+            cp -f ${DIST}/Image ./kernel
             magiskboot repack ../boot.img ../boot_patched.img
             mv -f ../boot_patched.img ../boot.img && rm -rf ../tmp && cd -
           fi
@@ -204,9 +242,6 @@ jobs:
           Type firmware: stock ${{ inputs.beta }}
           ##########################
           EOF
-          if [ "${{ inputs.beta }}" == "stable" ]; then
-              sed -i "/Firmware Build ID/i Security patch: $(date "+%b %Y")" output_shiba/README.txt
-          fi
 
           cat >> output_husky/README.txt << EOF
           ##########Source##########
@@ -223,9 +258,12 @@ jobs:
           Type firmware: stock ${{ inputs.beta }}
           ##########################
           EOF
-          if [ "${{ inputs.beta }}" == "stable" ]; then
-              sed -i "/Firmware Build ID/i Security patch: $(date "+%b %Y")" output_husky/README.txt
-          fi
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: AnyKernel3_${{ inputs.beta }}
+          path: anykernel/output/*
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v6.0.0
