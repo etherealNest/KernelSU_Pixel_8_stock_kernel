@@ -39,7 +39,7 @@ jobs:
           echo "SUSFS_COMMIT=$SUSFS_COMMIT" >> $GITHUB_ENV
 
           if [ "${{ inputs.beta }}" == "stable" ]; then
-            SECURITY_PATCH=2026-01
+            SECURITY_PATCH=2026-02
             PROP=google/shiba/shiba:16/BP4A.260205.001/14624666:user/release-keys
           elif [ "${{ inputs.beta }}" == "beta" ]; then
             SECURITY_PATCH=2026-01
