@@ -1,0 +1,25 @@
+name: Download boot
+on:
+  workflow_dispatch:
+    inputs:
+      link:
+        description: 'Link'
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download firmware and extract boot
+        run: |
+          wget --progress=dot:mega ${{ inputs.link }} -O firmware.zip
+          mkdir tmp && unzip firmware.zip -d ./tmp/
+          unzip -j ./tmp/**/*.zip boot.img vendor_kernel_boot.img -d .
+          mkdir output
+          cp boot.img vendor_kernel_boot.img ./output
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: boot
+          path: output/*

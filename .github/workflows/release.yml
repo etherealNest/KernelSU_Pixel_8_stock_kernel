@@ -15,6 +15,12 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
+    env:
+      KSU_NEXT_VERSION: ''
+      KERNEL_VER: ''
+      STABLE_SECURITY_PATCH: ''
+      BETA_SECURITY_PATCH: ''
+      NANO: ''
     permissions:
       contents: write
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}

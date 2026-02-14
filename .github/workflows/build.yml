@@ -21,6 +21,7 @@ jobs:
       DEFCONFIG: ''
       KSU_VERSION: ''
       KERNEL_VER: '' 
+      SECURITY_PATCH: ''
     steps:
       - name: Checkout
         uses: actions/checkout@v6
