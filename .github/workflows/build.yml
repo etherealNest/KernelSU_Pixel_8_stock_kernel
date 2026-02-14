@@ -34,9 +34,9 @@ jobs:
           echo "DEFCONFIG=$DEFCONFIG" >> $GITHUB_ENV
           echo "DIST=$KERNEL/out/shusky/dist" >> $GITHUB_ENV
 
-          echo "KSU_NEXT_COMMIT=6aa18400f7277ed3d0d0f30ea97f1b437a235cd3" >> $GITHUB_ENV
+          echo "KSU_NEXT_COMMIT=000852fe2801e75b4750ee8db579eac61c525cae" >> $GITHUB_ENV
           echo "KSU_COMMIT=c44adc14c7fdaf9e7d3de8a32575bf15e1e35206" >> $GITHUB_ENV
-          SUSFS_COMMIT=700af50a692ec8a7279bce005ffce0f91195eab1
+          SUSFS_COMMIT=27958412f3faef62f03c78708bc39095c2c77812
           echo "SUSFS_COMMIT=$SUSFS_COMMIT" >> $GITHUB_ENV
 
           if [ "${{ inputs.beta }}" == "stable" ]; then
@@ -94,8 +94,6 @@ jobs:
 
           echo "  ✍🏻 Патч ядра"
           patch -d "$KERNEL/aosp" -p1 < susfs4ksu/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch || true
-          echo "    🛠️ Ремонт патча ядра"
-          patch -d "$KERNEL/aosp" -p1 < patches/base.c.patch
 
           echo "  ✍🏻 Патч KernelSU/KernelSU-Next"
           patch -d "$KERNEL/aosp/${{ inputs.variant }}" -p1 < susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true

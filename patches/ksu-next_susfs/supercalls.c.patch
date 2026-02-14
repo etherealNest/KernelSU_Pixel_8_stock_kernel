@@ -1,5 +1,5 @@
 diff --git a/kernel/supercalls.c b/kernel/supercalls.c
-index cab9179..31e3326 100644
+index c5b1973d..385d85df 100644
 --- a/kernel/supercalls.c
 +++ b/kernel/supercalls.c
 @@ -13,6 +13,11 @@
@@ -28,7 +28,7 @@ index cab9179..31e3326 100644
  
  	switch (cmd.operation) {
  	case KSU_MARK_GET: {
-+#ifndef CONFIG_KSU_SUSFS
++	#ifndef CONFIG_KSU_SUSFS
  		// Get task mark status
  		ret = ksu_get_task_mark(cmd.pid);
  		if (ret < 0) {
