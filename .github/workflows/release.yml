@@ -64,7 +64,9 @@ jobs:
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ./assets/*/*AnyKernel3*.zip
+          files: |
+            ./assets/AnyKernel3_*/*AnyKernel3*.zip
+            ./assets/IMG_*/*_boot.img_*.zip
           tag_name: KSU-Next${{ env.KSU_NEXT_VERSION }}_${{ env.KERNEL_VER }}_stable${{ env.STABLE_SECURITY_PATCH }}_beta${{ env.BETA_SECURITY_PATCH }}_${{ env.NANO }}
           prerelease: false
           name: "KSU-Next ${{ env.KSU_NEXT_VERSION }} | ${{ env.KERNEL_VER }}"
@@ -90,32 +92,8 @@ jobs:
             
             ### Installation Guide
             
-            > **Requirements:** 
-            > - Unlocked bootloader and updated [Platform-tools](https://developer.android.com/tools/releases/platform-tools).
-            > - root access via Maisk / KernelSU
-            
-            **1. Before installation:**
-            - Download and install [KernelFlasher](https://github.com/fatalcoder524/KernelFlasher/releases) granting it root access.
-            - Select and download the AnyKernel3 archive suitable for your firmware from this release's files, with stable or beta in the filename.
-            > stable in the filename means the archive is intended for the stable firmware version.
-            > beta in the filename means the archive is intended for the beta firmware version.
-            
-            **2. Flashing the archive:**
-              1. Launch KernelFlasher.
-              2. Select the slot with [Active] label and press "Browse".
-              3. In the opened menu press "Flash" and select the previously downloaded archive.
-              4. Reboot the device.
-            
-            **3. Removing Magisk / KernelSU which was installed in LKM mode to run KernelFlasher**
-              1. Find init_boot.img from your firmware (located in the factory firmware archive)
-              2. Reboot the device into bootloader mode (by holding volume down button on startup or executing adb reboot bootloader in adb)
-              3. Flash the stock init_boot with this command:
-                ```fastboot flash init_boot.img```
-            > We do this to remove the root method that was before flashing our archive to avoid conflicts.
-            
-            **4. Finish:**
-              Reboot into system:
-                ```fastboot reboot```
+            [Guide for AnyKernel3 on Github Gist](https://gist.github.com/etherealNest/1ed53fdda401534cd50ee5b866eb3206)
+            [Guide for Fastboot on Github Gist](https://gist.github.com/etherealNest/9c34519a0919746a696d19a7c66bf392)
             
             **5. Post-installation steps (After booting):**
             
