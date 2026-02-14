@@ -70,6 +70,19 @@ jobs:
 
           echo "KERNEL_VER=$(sed -n '2,4p' ${KERNEL}/aosp/Makefile | grep -oE '[0-9]+' | paste -sd '.')" >> $GITHUB_ENV
 
+          # Отключение сборки ненужных компонентов
+          sed -i 's/build_dtb = True,/build_dtb = False,/' kernel_pixel/private/devices/google/shusky/BUILD.bazel
+          sed -i 's/build_dtbo = True,/build_dtbo = False,/' kernel_pixel/private/devices/google/shusky/BUILD.bazel
+          sed -i 's/build_system_dlkm = True,/build_system_dlkm = False,/' kernel_pixel/private/devices/google/shusky/BUILD.bazel
+          sed -i 's/build_vendor_dlkm = True,/build_vendor_dlkm = False,/' kernel_pixel/private/devices/google/shusky/BUILD.bazel
+          sed -i 's/build_vendor_kernel_boot = True,/build_vendor_kernel_boot = False,/' kernel_pixel/private/devices/google/shusky/BUILD.bazel
+
+          sed -i 's/build_dtb = True,/build_dtb = False,/' kernel_pixel/private/devices/google/zuma/BUILD.bazel
+          sed -i 's/build_dtbo = True,/build_dtbo = False,/' kernel_pixel/private/devices/google/zuma/BUILD.bazel
+          sed -i 's/build_system_dlkm = True,/build_system_dlkm = False,/' kernel_pixel/private/devices/google/zuma/BUILD.bazel
+          sed -i 's/build_vendor_dlkm = True,/build_vendor_dlkm = False,/' kernel_pixel/private/devices/google/zuma/BUILD.bazel
+          sed -i 's/build_vendor_kernel_boot = True,/build_vendor_kernel_boot = False,/' kernel_pixel/private/devices/google/zuma/BUILD.bazel
+
       - name: Интеграция KernelSU/KernelSU-Next
         working-directory: kernel_pixel/aosp
         run: |
