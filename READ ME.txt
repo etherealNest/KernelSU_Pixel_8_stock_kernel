@@ -30,7 +30,7 @@
 git submodule update --init --recursive
 
 После первой установки используйте основной скрипт сборки:
-./new_build_ksu-next.sh
+./build_ksu-next.sh
 
 Для обновления репозитория и исходников с upstream используйте:
 ./update_repo.sh
